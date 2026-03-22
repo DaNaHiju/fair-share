@@ -111,12 +111,14 @@ resource "aws_instance" "app_server" {
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.app_sg.id]
   key_name               = var.key_name
+  iam_instance_profile   = aws_iam_instance_profile.ecr_profile.name
 
   user_data = <<-EOF
   #!/bin/bash
   sudo apt-get update
-  sudo apt-get install -y ca-certificates curl gnupg lsb-release
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+  sudo apt-get install -y ca-certificates curl gnupg lsb-release awscli
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -yes -o /usr/share/keyrings/docker-archive-keyring.gpg
+  sudo chmod a+r /usr/share/keyrings/docker-archive-keyring.gpg
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo apt-get update
   sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose
@@ -136,22 +138,25 @@ resource "aws_instance" "jenkins_server" {
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.jenkins_sg.id]
   key_name               = var.key_name
+  iam_instance_profile   = aws_iam_instance_profile.ecr_profile.name
 
   user_data = <<-EOF
   #!/bin/bash
   sudo apt-get update
   # Install Java
-  sudo apt-get install -y openjdk-17-jre-headless
+  sudo apt-get install -y openjdk-17-jre-headless awscli
   
   # Install Jenkins
-  curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
-  echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/ | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
+  sudo wget -q -O /usr/share/keyrings/jenkins-keyring.asc https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+  sudo chmod a+r /usr/share/keyrings/jenkins-keyring.asc
+  echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
   sudo apt-get update
   sudo apt-get install -y jenkins
   
   # Install Docker
   sudo apt-get install -y ca-certificates curl gnupg lsb-release
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -yes -o /usr/share/keyrings/docker-archive-keyring.gpg
+  sudo chmod a+r /usr/share/keyrings/docker-archive-keyring.gpg
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo apt-get update
   sudo apt-get install -y docker-ce docker-ce-cli containerd.io
@@ -163,4 +168,40 @@ resource "aws_instance" "jenkins_server" {
   tags = {
     Name = "fairshare-jenkins"
   }
+}
+
+resource "aws_ecr_repository" "fairshare_backend" {
+  name                 = "fairshare-backend"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+data "aws_iam_policy_document" "ec2_assume_role" {
+  statement {
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "ecr_role" {
+  name               = "fairshare-ecr-role"
+  assume_role_policy = data.aws_iam_policy_document.ec2_assume_role.json
+}
+
+resource "aws_iam_role_policy_attachment" "ecr_policy_attachment" {
+  role       = aws_iam_role.ecr_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser"
+}
+
+resource "aws_iam_instance_profile" "ecr_profile" {
+  name = "fairshare-ecr-profile"
+  role = aws_iam_role.ecr_role.name
 }
