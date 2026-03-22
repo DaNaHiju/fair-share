@@ -1,0 +1,26 @@
+# Python
+**/venv/
+**/__pycache__/
+**/*.py[cod]
+**/*.so
+
+# Environments
+**/.env
+
+# Node
+**/node_modules/
+**/dist/
+**/.vite/
+
+# Logs
+backend_logs.txt
+*.log
+
+# Terraform
+**/*.tfstate
+**/*.tfstate.backup
+**/.terraform/
+**/*.tfvars
+
+# OS
+**/.DS_Store
