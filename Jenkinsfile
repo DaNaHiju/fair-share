@@ -21,7 +21,7 @@ pipeline {
             steps {
                 sh '''
                     docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} -f Dockerfile.backend .
-                    docker run --rm ${DOCKER_IMAGE}:${DOCKER_TAG} pytest
+                    docker run --rm ${DOCKER_IMAGE}:${DOCKER_TAG} python -m pytest
                 '''
             }
         }
