@@ -17,24 +17,19 @@ pipeline {
             }
         }
         
-        stage('Test') {
+        stage('Build & Test') {
             steps {
-                dir('backend') {
-                    sh '''
-                        python3 -m venv venv
-                        . venv/bin/activate
-                        pip install -r requirements.txt
-                        pytest
-                    '''
-                }
+                sh '''
+                    docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} -f Dockerfile.backend .
+                    docker run --rm ${DOCKER_IMAGE}:${DOCKER_TAG} pytest
+                '''
             }
         }
         
-        stage('Build & Push to ECR') {
+        stage('Push to ECR') {
             steps {
                 sh '''
                     aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
-                    docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} -f Dockerfile.backend .
                     docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
                 '''
             }
