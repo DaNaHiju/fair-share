@@ -18,6 +18,7 @@ services:
     build: 
       context: .
       dockerfile: Dockerfile.backend
+    image: ${DOCKER_IMAGE:-fairshare-backend}:${DOCKER_TAG:-latest}
     depends_on:
       db:
         condition: service_healthy

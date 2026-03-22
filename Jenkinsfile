@@ -2,7 +2,10 @@ pipeline {
     agent any
     
     environment {
-        DOCKER_IMAGE = 'your-dockerhub-username/fairshare-backend'
+        AWS_REGION = 'us-east-1'
+        AWS_ACCOUNT_ID = credentials('aws-account-id')
+        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        DOCKER_IMAGE = "${ECR_REGISTRY}/fairshare-backend"
         DOCKER_TAG = "${env.BUILD_NUMBER}"
         APP_SERVER_IP = credentials('app-server-ip')
     }
@@ -27,15 +30,13 @@ pipeline {
             }
         }
         
-        stage('Build & Push') {
+        stage('Build & Push to ECR') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'DOCKER_HUB_CREDENTIALS', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
-                    sh '''
-                        echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
-                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} -f Dockerfile.backend .
-                        docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
-                    '''
-                }
+                sh '''
+                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                    docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} -f Dockerfile.backend .
+                    docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
+                '''
             }
         }
         
@@ -44,7 +45,9 @@ pipeline {
                 sshagent(['APP_SERVER_SSH']) {
                     sh '''
                         ssh -o StrictHostKeyChecking=no ubuntu@${APP_SERVER_IP} "
+                            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY} &&
                             cd /opt/fairshare &&
+                            export DOCKER_IMAGE=${DOCKER_IMAGE} &&
                             export DOCKER_TAG=${DOCKER_TAG} &&
                             docker-compose pull &&
                             docker-compose up -d
@@ -60,7 +63,7 @@ pipeline {
             cleanWs()
         }
         success {
-            echo "Deployed successfully!"
+            echo "Deployed to ECR successfully!"
         }
         failure {
             echo "Pipeline failed."
